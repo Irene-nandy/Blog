@@ -1,8 +1,8 @@
-# Blogspot
+# Blogs
 
 ## Author 
 
-* Clinton Oliera
+* Irene kasiva
 
 ## Description
 
