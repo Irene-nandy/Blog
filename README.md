@@ -1,4 +1,4 @@
-# Blogspot
+# Blogs
 
 ## Author 
 
