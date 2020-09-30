@@ -2,7 +2,7 @@
 
 ## Author 
 
-* Clinton Oliera
+* Irene Kasiva.
 
 ## Description
 
