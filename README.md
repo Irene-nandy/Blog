@@ -2,7 +2,7 @@
 
 ## Author 
 
-* Irene kasiva
+* Irene Kasiva.
 
 ## Description
 
