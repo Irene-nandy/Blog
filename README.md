@@ -42,10 +42,10 @@ You Require to install
 
 ### Contact Info:
 
-clintonoliera391@gmail.com
+irenekasiva75@gmail.com
 
 ## License
 
 this software license under MIT License
 
-Copyright (c) 2020 clinton oliera
+Copyright (c) 2020 irenekasiva
