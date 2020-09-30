@@ -1,53 +1,102 @@
-from flask import render_template, url_for, flash, redirect, request, abort
+from flask import render_template,request,url_for,redirect,flash,abort
 from . import main
-import requests
-from ..models import User, Post, Comment
-from .forms import UpdateProfile,PostForm,CommentForm,subscription_form
-from .. import db,photos
-from flask_login import login_user, current_user, logout_user, login_required
-import markdown2  
-from flask_mail import Message
-from .. import mail, MAIL_USERNAME
+from .forms import BlogForm, CommentForm, UpdateProfile
+from ..models import User, Comment , Blog
+from flask_login import login_required, current_user
+from .. import db, photos
+import datetime
+from ..requests import getQuotes
 
-
-
-
-@main.route("/", methods=['GET', 'POST'])
-@main.route("/home", methods=['GET', 'POST'])
-def home():
-    random_quote_url = 'http://quotes.stormconsultancy.co.uk/random.json'
-    quote_response = requests.get(random_quote_url) 
-    quote_data = quote_response.json()
-    posts = Post.query.order_by(Post.date_posted.desc())
-
-    form = subscription_form()
-    if form.validate_on_submit():
-        subemail = form.email.data
-        senderemail = MAIL_USERNAME
-        msg = Message('Hey there.',sender = senderemail,recipients = subemail)
-        msg.html = '<h2>Welcome to YourQuote.</h2> <p>YourBlog is a personal blogging website where you can create and share your opinions and other users can read and comment on them. Additionally, add a feature that displays random quotes to inspire your users.</p>'
-        mail.send(msg)
-        flash('You have been added to our subscription', 'success')
-        return redirect(url_for('main.home'))
+@main.route('/')
+def index():
     
-    return render_template('home.html', title='Home', quote_data = quote_data, posts=posts, form=form)
+    '''
+    View root page function that returns the index page and its data
+    '''
 
-@main.route("/about")
-def about():
-    return render_template('about.html', title='About')
+    blogs = Blog.query.all()
+    title = 'Home - Welcome to Blogs Online  Website'
+    quote = getQuotes()
+    quote1 = getQuotes()
+    quote2 = getQuotes()
+    quote3 = getQuotes()
 
 
-@main.route("/account/<uname>")
+
+    return render_template('index.html', title = title, blogs=blogs, quote=quote ,quote1=quote1,quote2=quote2,quote3=quote3 )
+
+@main.route('/blog/new', methods = ['GET','POST'])
 @login_required
-def account(uname):
+def new_blog():
+    blog_form = BlogForm()
+    if blog_form.validate_on_submit():
+        title = blog_form.title.data
+        blog = blog_form.text.data
+
+        # Updated blog instance
+        new_blog = Blog(blog_title=title,blog_content=blog,username=current_user.username,likes=0,dislikes=0)
+
+        # Save blog method
+        new_blog.save_blog()
+        return redirect(url_for('.index'))
+
+    title = 'New blog'
+    return render_template('new_blog.html',title = title,blog_form=blog_form )  
+
+@main.route('/blog/<int:id>', methods = ['GET','POST'])
+def blog(id):
+    blog = Blog.get_blog(id)
+    posted_date = blog.posted.strftime('%b %d, %Y')
+
+    if request.args.get("like"):
+        blog.likes = blog.likes + 1
+
+        db.session.add(blog)
+        db.session.commit()
+
+        return redirect("/blog/{blog_id}".format(blog_id=blog.id))
+
+    elif request.args.get("dislike"):
+        blog.dislikes = blog.dislikes + 1
+
+        db.session.add(blog)
+        db.session.commit()
+
+        return redirect("/blog/{blog_id}".format(blog_id=blog.id))
+    
+    comment_form = CommentForm()
+    if comment_form.validate_on_submit():
+        comment = comment_form.text.data
+
+        new_comment = Comment(comment = comment,user = current_user,blog_id = blog)
+
+        new_comment.save_comment()
+
+
+    comments = Comment.get_comments(blog)
+    
+    
+    return render_template("blog.html", blog = blog, date = posted_date, comment_form = comment_form, comments = comments)  
+
+@main.route('/user/<uname>/blogs')
+def user_blogs(uname):
+    user = User.query.filter_by(username=uname).first()
+    blogs = Blog.query.filter_by(user_id = user.id).all()
+    blogs_count = Blog.count_blogs(uname)
+    user_joined = user.date_joined.strftime('%b,%d,%y')
+    
+    return render_template("profile/blogs.html",user = user, blogs = blogs, blogs_count= blogs_count,date= user_joined)
+
+@main.route('/user/<uname>')
+def profile(uname):
     user = User.query.filter_by(username = uname).first()
+
     if user is None:
         abort(404)
-    posts = Post.query.filter_by(user_id=current_user.id).all()
-    return render_template('account.html', title='Account', user = user, posts=posts)
 
+    return render_template("profile/profile.html", user = user)
 
-@main.route('/account/<uname>/update',methods = ['GET','POST'])
+@main.route('/user/<uname>/update',methods = ['GET','POST'])
 @login_required
 def update_profile(uname):
     user = User.query.filter_by(username = uname).first()
@@ -62,9 +111,42 @@ def update_profile(uname):
         db.session.add(user)
         db.session.commit()
 
-        return redirect(url_for('main.account',uname=user.username, title='Update Profile'))
+        return redirect(url_for('.profile',uname=user.username))
+    
+    return render_template('profile/update.html',form =form)     
 
-    return render_template('update.html',form =form)
+@main.route("/blog/<int:id>/update",methods = ['GET','POST'])
+@login_required
+def update_blog(id):
+    blog = Blog.query.get_or_404(id)
+    if blog.username != current_user.username:
+        abort(403)
+    blog_form = BlogForm()
+    if blog_form.validate_on_submit():
+        blog.blog_title = blog_form.title.data
+        blog.blog_content = blog_form.text.data
+        db.session.commit()
+        flash('Your blog has been updated!', 'success')
+        return redirect(url_for('main.blog', id=blog.id))
+    elif request.method == 'GET':
+        blog_form.title.data = blog.blog_title
+        blog_form.text.data = blog.blog_content
+    
+    return render_template('new_blog.html',title = 'Update Blog',blog_form=blog_form )
+
+@main.route("/blog/<int:id>/delete", methods=['POST'])
+@login_required
+def delete_blog(id):
+    blog = Blog.query.get(id)
+    if blog.username != current_user.username:
+        abort(403)
+
+    db.session.delete(blog)
+    db.session.commit()
+
+    flash('Your post has been deleted!', 'success')
+
+    return redirect(url_for('main.index'))
 
 @main.route('/user/<uname>/update/pic',methods= ['POST'])
 @login_required
@@ -73,74 +155,6 @@ def update_pic(uname):
     if 'photo' in request.files:
         filename = photos.save(request.files['photo'])
         path = f'photos/{filename}'
-        user.image_file = path
+        user.profile_pic_path = path 
         db.session.commit()
-    return redirect(url_for('main.account',uname=uname))
-
-@main.route("/post/new", methods=['GET', 'POST'])
-@login_required
-def new_post():
-    form = PostForm()
-    if form.validate_on_submit():
-        post = Post(title=form.title.data, content=form.content.data,  author=current_user, upvotes=0, downvotes=0)
-        db.session.add(post)
-        db.session.commit()
-        flash('Your post has been created', 'success')
-        return redirect(url_for('main.home'))
-    return render_template('create_post.html', title='New Blog', form=form, legend='New Blog')
-
-@main.route("/post/<int:post_id>", methods=['GET', 'POST'])
-def post(post_id):
-    post = Post.query.get_or_404(post_id)
-
-    if request.args.get("upvote"):
-        post.upvotes += 1
-        db.session.add(post)
-        db.session.commit()
-        return redirect("/post/{post_id}".format(post_id=post.id))
-
-    elif request.args.get("downvote"):
-        post.downvotes += 1
-        db.session.add(post)
-        db.session.commit()
-        return redirect("/post/{post_id}".format(post_id=post.id))
-
-    form = CommentForm()
-    if form.validate_on_submit():
-        comment = form.text.data
-
-        new_comment = Comment(content = comment, post_id = post.id)
-
-        new_comment.save_comment()
-    comments = Post.get_comments(post)
-
-    return render_template('post.html', title=post.title, post=post, comments=comments, form=form)
-
-@main.route("/post/<int:post_id>/update", methods=['GET', 'POST'])
-@login_required
-def update_post(post_id):
-    post = Post.query.get_or_404(post_id)
-    if post.author != current_user:
-        abort(403)
-    form = PostForm()
-    if form.validate_on_submit():
-        post.title = form.title.data
-        post.content = form.content.data
-        db.session.commit()
-        flash('Your post has been updated', 'success')
-        return redirect(url_for('main.post', post_id=post.id))
-    elif request.method == 'GET':
-        form.title.data = post.title
-        form.content.data = post.content
-    return render_template('create_post.html', title='Update Post', form=form, legend='Update Blog')
-
-@main.route("/post/<int:post_id>/delete", methods=['POST'])
-@login_required
-def delete_post(post_id):
-    post = Post.query.get_or_404(post_id)
-    if post.author != current_user:
-        abort(403)
-    db.session.delete(post)
-    db.session.commit()
-    flash('Your post has been deleted!', 'success')
-    return redirect(url_for('main.home'))
+    return redirect(url_for('main.profile',uname=uname))               

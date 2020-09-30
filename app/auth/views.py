@@ -1,44 +1,43 @@
+from flask import render_template,redirect,url_for,request,flash
 from . import auth
-from flask import render_template, url_for, flash, redirect, request, abort
-from flask_login import login_user, current_user, logout_user, login_required
+from flask_login import login_user,login_required,logout_user
 from ..models import User
 from .forms import LoginForm,RegistrationForm
-from ..import db,bcrypt
+from ..import db
 
 
-@auth.route("/register", methods=['GET', 'POST'])
+
+@auth.route('/register',methods = ["GET","POST"])
 def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('main.home'))
     form = RegistrationForm()
     if form.validate_on_submit():
-        hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
-        user = User(username=form.username.data, email=form.email.data, password=hashed_password)
+        user = User(email = form.email.data, username = form.username.data,firstname= form.firstname.data,lastname= form.lastname.data,password = form.password.data)
         db.session.add(user)
         db.session.commit()
 
-        flash('Your account has been created! You are now able to log in', 'success')
+        # mail_message("Welcome Blog","email/welcome_user",user.email,user=user)
+
+
         return redirect(url_for('auth.login'))
-    return render_template('register.html', title='Register', form=form)
+        title = "New Account"
+    return render_template('auth/register.html',form =form)
 
-
-@auth.route("/login", methods=['GET', 'POST'])
+@auth.route('/login',methods=['GET','POST'])
 def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('main.home'))
     form = LoginForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
-        if user and bcrypt.check_password_hash(user.password, form.password.data):
-            login_user(user, remember=form.remember.data)
-            return redirect(request.args.get('next') or url_for('main.home'))
-        else:
-            flash('Login Unsuccessful. Please check email and password', 'danger')
-    return render_template('login.html', title='Login', form=form)
+        user = User.query.filter_by(email = form.email.data).first()
+        if user is not None and user.verify_password(form.password.data):
+            login_user(user,form.remember.data)
+            return redirect(request.args.get('next') or url_for('main.index'))
 
+        flash('Invalid username or Password')
 
+    title = "Login"
+    return render_template('auth/login.html',form =form,title=title)
 
-@auth.route("/logout")
+@auth.route('/logout')
+@login_required
 def logout():
     logout_user()
-    return redirect(url_for('main.home'))
+    return redirect(url_for("main.index"))
